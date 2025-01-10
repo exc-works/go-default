@@ -1,25 +1,86 @@
 package go_default
 
 import (
+	"encoding"
 	"errors"
 	"fmt"
 	"reflect"
 	"strconv"
+	"strings"
+	"time"
 )
 
 var (
 	ErrNotPointer = errors.New("input must be a pointer to a struct")
 )
 
+var (
+	durationType = reflect.TypeOf(time.Duration(0))
+	timeType     = reflect.TypeOf(time.Time{})
+)
+
+type DefaultSetter func(field reflect.StructField, fieldValue reflect.Value, value string) (set bool, err error)
+
+func DurationSetter(field reflect.StructField, fieldValue reflect.Value, value string) (set bool, err error) {
+	if field.Type != durationType {
+		return false, nil
+	}
+	d, err := time.ParseDuration(value)
+	if err != nil {
+		return false, fmt.Errorf("cannot set default value for %s, parse %s to %s failed", field.Name, value, field.Type.Name())
+	}
+	fieldValue.Set(reflect.ValueOf(d))
+	return true, nil
+}
+
+func TimeSetter(field reflect.StructField, fieldValue reflect.Value, value string) (set bool, err error) {
+	if field.Type != timeType {
+		return false, nil
+	}
+	values := strings.Split(value, ";")
+	if len(values) == 1 {
+		values = append(values, time.RFC3339)
+	}
+	t, err := time.Parse(values[1], values[0])
+	if err != nil {
+		return false, fmt.Errorf("cannot set default value for %s, parse %s to %s failed", field.Name, value, field.Type.Name())
+	}
+	fieldValue.Set(reflect.ValueOf(t))
+	return true, nil
+}
+
+func TextUnmarshalerSetter(field reflect.StructField, fieldValue reflect.Value, value string) (set bool, err error) {
+	switch field.Type.Kind() {
+	case reflect.Pointer:
+		if !field.Type.Implements(reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem()) {
+			return false, nil
+		}
+		if fieldValue.IsNil() {
+			fieldValue.Set(reflect.New(field.Type.Elem()))
+		}
+		if err := fieldValue.Interface().(encoding.TextUnmarshaler).UnmarshalText([]byte(value)); err != nil {
+			return false, fmt.Errorf("cannot set default value for %s, unmarshal %s failed", field.Name, value)
+		}
+		return true, nil
+	default:
+		return false, nil
+	}
+}
+
 type Config struct {
-	Tag string
+	TagName string
+	Setters []DefaultSetter
 }
 
 func Struct(input any) error {
 	cfg := &Config{
-		Tag: "default",
+		TagName: "default",
+		Setters: []DefaultSetter{
+			DurationSetter,
+			TimeSetter,
+			TextUnmarshalerSetter,
+		},
 	}
-	_ = cfg
 
 	v := reflect.ValueOf(input)
 	t := v.Type()
@@ -33,7 +94,7 @@ func Struct(input any) error {
 
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
-		tag := field.Tag.Get(cfg.Tag)
+		tag := field.Tag.Get(cfg.TagName)
 		if tag == "" {
 			continue
 		}
@@ -43,6 +104,20 @@ func Struct(input any) error {
 			return err
 		}
 		if !ok {
+			continue
+		}
+
+		var set bool
+		for _, setter := range cfg.Setters {
+			set, err = setter(field, v.Elem().Field(i), tag)
+			if err != nil {
+				return fmt.Errorf("cannot set default value for %s, err: %w", field.Name, err)
+			}
+			if set {
+				break
+			}
+		}
+		if set {
 			continue
 		}
 
@@ -66,6 +141,8 @@ func isDefault(field reflect.StructField, fieldValue reflect.Value) (bool, error
 		reflect.Bool:
 		return fieldValue.IsZero(), nil
 	case reflect.Struct:
+		return true, nil
+	case reflect.Pointer:
 		return true, nil
 	default:
 		return false, fmt.Errorf("detect unsupported type for %s, type %s", field.Name, field.Type.Name())

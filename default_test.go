@@ -2,7 +2,9 @@ package go_default
 
 import (
 	"github.com/stretchr/testify/require"
+	"math/big"
 	"testing"
+	"time"
 )
 
 type Foo struct {
@@ -17,6 +19,16 @@ type Foo struct {
 	Float64 float64 `default:"1.0"`
 
 	Bool bool `default:"true"`
+
+	// Complex types
+
+	Duration       time.Duration `default:"1s"`
+	Time           time.Time     `default:"2025-01-10T17:20:00Z"`                                        // use time.RFC3339 as default layout
+	TimeWithLayout time.Time     `default:"Fri, 10 Jan 2025 17:20:00 UTC;Mon, 02 Jan 2006 15:04:05 MST"` // use custom layout time.RFC1123
+
+	// Type implemented encoding.TextUnmarshaler
+	BigInt    big.Int  `default:"1234567890"` // Not a pointer can not be set
+	BigIntPtr *big.Int `default:"1234567890987654321"`
 }
 
 func TestStruct(t *testing.T) {
@@ -32,4 +44,9 @@ func TestStruct(t *testing.T) {
 	require.EqualValues(t, 2.0, foo.Float32)
 	require.EqualValues(t, 1.0, foo.Float64)
 	require.EqualValues(t, true, foo.Bool)
+	require.EqualValues(t, time.Second, foo.Duration)
+	require.EqualValues(t, time.Date(2025, 1, 10, 17, 20, 0, 0, time.UTC), foo.Time)
+	require.EqualValues(t, time.Date(2025, 1, 10, 17, 20, 0, 0, time.UTC), foo.TimeWithLayout)
+	require.EqualValues(t, big.NewInt(0).String(), foo.BigInt.String())
+	require.EqualValues(t, "1234567890987654321", foo.BigIntPtr.String())
 }

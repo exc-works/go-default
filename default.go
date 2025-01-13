@@ -14,15 +14,10 @@ var (
 	ErrNotPointer = errors.New("input must be a pointer to a struct")
 )
 
-var (
-	durationType = reflect.TypeOf(time.Duration(0))
-	timeType     = reflect.TypeOf(time.Time{})
-)
-
 type DefaultSetter func(field reflect.StructField, fieldValue reflect.Value, value string) (set bool, err error)
 
 func DurationSetter(field reflect.StructField, fieldValue reflect.Value, value string) (set bool, err error) {
-	if field.Type != durationType {
+	if field.Type != reflect.TypeOf(time.Duration(0)) {
 		return false, nil
 	}
 	d, err := time.ParseDuration(value)
@@ -34,7 +29,7 @@ func DurationSetter(field reflect.StructField, fieldValue reflect.Value, value s
 }
 
 func TimeSetter(field reflect.StructField, fieldValue reflect.Value, value string) (set bool, err error) {
-	if field.Type != timeType {
+	if field.Type != reflect.TypeOf(time.Time{}) {
 		return false, nil
 	}
 	values := strings.Split(value, ";")
@@ -82,7 +77,10 @@ func Struct(input any) error {
 		},
 	}
 
-	v := reflect.ValueOf(input)
+	return fillStruct("", reflect.ValueOf(input), cfg)
+}
+
+func fillStruct(deepName string, v reflect.Value, cfg *Config) error {
 	t := v.Type()
 	if t.Kind() != reflect.Pointer {
 		return ErrNotPointer
@@ -94,12 +92,14 @@ func Struct(input any) error {
 
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
-		tag := field.Tag.Get(cfg.TagName)
-		if tag == "" {
+		tagValue := field.Tag.Get(cfg.TagName)
+		if tagValue == "" {
 			continue
 		}
+		fieldValue := v.Elem().Field(i)
 
-		ok, err := isDefault(field, v.Elem().Field(i))
+		path := path(deepName, field.Name)
+		ok, err := isDefault(path, field, fieldValue)
 		if err != nil {
 			return err
 		}
@@ -109,7 +109,7 @@ func Struct(input any) error {
 
 		var set bool
 		for _, setter := range cfg.Setters {
-			set, err = setter(field, v.Elem().Field(i), tag)
+			set, err = setter(field, fieldValue, tagValue)
 			if err != nil {
 				return fmt.Errorf("cannot set default value for %s, err: %w", field.Name, err)
 			}
@@ -121,18 +121,27 @@ func Struct(input any) error {
 			continue
 		}
 
-		if field.Type.Kind() == reflect.Struct {
-			// TODO: support nested struct, maybe use custom setter
-			continue
-		}
-		if err := setDefault(field, v.Elem().Field(i), tag); err != nil {
-			return err
+		if field.Type.Kind() == reflect.Pointer {
+			if fieldValue.IsNil() {
+				fieldValue.Set(reflect.New(field.Type.Elem())) // create a new instance
+			}
+			if err := fillStruct(path, fieldValue, cfg); err != nil {
+				return err
+			}
+		} else if field.Type.Kind() == reflect.Struct {
+			if err := fillStruct(path, fieldValue.Addr(), cfg); err != nil {
+				return err
+			}
+		} else {
+			if err := setDefault(path, field, fieldValue, tagValue); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
 }
 
-func isDefault(field reflect.StructField, fieldValue reflect.Value) (bool, error) {
+func isDefault(path string, field reflect.StructField, fieldValue reflect.Value) (bool, error) {
 	switch field.Type.Kind() {
 	case reflect.String,
 		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
@@ -140,45 +149,50 @@ func isDefault(field reflect.StructField, fieldValue reflect.Value) (bool, error
 		reflect.Float32, reflect.Float64,
 		reflect.Bool:
 		return fieldValue.IsZero(), nil
-	case reflect.Struct:
-		return true, nil
-	case reflect.Pointer:
+	case reflect.Struct, reflect.Pointer:
 		return true, nil
 	default:
-		return false, fmt.Errorf("detect unsupported type for %s, type %s", field.Name, field.Type.Name())
+		return false, fmt.Errorf("detect unsupported type for %s, type %s", path, field.Type.Name())
 	}
 }
 
-func setDefault(field reflect.StructField, fieldValue reflect.Value, value string) error {
+func setDefault(path string, field reflect.StructField, fieldValue reflect.Value, value string) error {
 	switch field.Type.Kind() {
 	case reflect.String:
 		fieldValue.SetString(value)
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		i, err := strconv.ParseInt(value, 10, 64)
 		if err != nil {
-			return fmt.Errorf("cannot set default value for %s, parse %s to %s failed", field.Name, value, field.Type.Name())
+			return fmt.Errorf("cannot set default value for %s, parse %s to %s failed", path, value, field.Type.Name())
 		}
 		fieldValue.SetInt(i)
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		i, err := strconv.ParseUint(value, 10, 64)
 		if err != nil {
-			return fmt.Errorf("cannot set default value for %s, parse %s to %s failed", field.Name, value, field.Type.Name())
+			return fmt.Errorf("cannot set default value for %s, parse %s to %s failed", path, value, field.Type.Name())
 		}
 		fieldValue.SetUint(i)
 	case reflect.Float32, reflect.Float64:
 		f, err := strconv.ParseFloat(value, 64)
 		if err != nil {
-			return fmt.Errorf("cannot set default value for %s, parse %s to %s failed", field.Name, value, field.Type.Name())
+			return fmt.Errorf("cannot set default value for %s, parse %s to %s failed", path, value, field.Type.Name())
 		}
 		fieldValue.SetFloat(f)
 	case reflect.Bool:
 		b, err := strconv.ParseBool(value)
 		if err != nil {
-			return fmt.Errorf("cannot set default value for %s, parse %s to %s failed", field.Name, value, field.Type.Name())
+			return fmt.Errorf("cannot set default value for %s, parse %s to %s failed", path, value, field.Type.Name())
 		}
 		fieldValue.SetBool(b)
 	default:
-		return fmt.Errorf("unhandled type %s", field.Type.Name())
+		return fmt.Errorf("unhandled default value for %s, type %s", path, field.Type.Name())
 	}
 	return nil
+}
+
+func path(deepName, name string) string {
+	if deepName == "" {
+		return name
+	}
+	return deepName + "." + name
 }

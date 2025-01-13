@@ -35,11 +35,17 @@ type Foo struct {
 	NestedIgnore Nested // not add default tag will be ignored
 
 	NestedPtr *Nested `default:"dive"`
+
+	Anonymous     `default:"dive"`
+	*AnonymousPtr `default:"dive"`
 }
 
 type Nested struct {
 	String string `default:"world"`
 }
+
+type Anonymous = Nested
+type AnonymousPtr = Nested
 
 func TestStruct(t *testing.T) {
 	foo := &Foo{}
@@ -63,4 +69,6 @@ func TestStruct(t *testing.T) {
 	require.EqualValues(t, "world", foo.Nested.String)
 	require.EqualValues(t, "", foo.NestedIgnore.String)
 	require.EqualValues(t, "world", foo.NestedPtr.String)
+	require.EqualValues(t, "world", foo.Anonymous.String)
+	require.EqualValues(t, "world", foo.AnonymousPtr.String)
 }

@@ -66,6 +66,9 @@ func URLSetter(path string, field reflect.StructField, fieldValue reflect.Value,
 	if field.Type != reflect.TypeOf(&url.URL{}) {
 		return false, nil
 	}
+	if !fieldValue.IsNil() {
+		return true, nil // already set
+	}
 	u, err := url.Parse(value)
 	if err != nil {
 		return false, fmt.Errorf("cannot set default value for %s, parse %s to %s failed", path, value, field.Type.String())
@@ -114,6 +117,8 @@ func TextUnmarshalerSetter(path string, field reflect.StructField, fieldValue re
 		}
 		if fieldValue.IsNil() {
 			fieldValue.Set(reflect.New(field.Type.Elem()))
+		} else {
+			return true, nil // already set
 		}
 		if err := fieldValue.Interface().(encoding.TextUnmarshaler).UnmarshalText([]byte(value)); err != nil {
 			return false, fmt.Errorf("cannot set default value for %s, unmarshal %s failed", path, value)

@@ -176,60 +176,71 @@ func Struct(input any, opts ...Option) error {
 		return ErrNotPointer
 	}
 
-	return fillStruct("", v, cfg)
+	return fillStruct("", v, "", cfg)
 }
 
-func fillStruct(deepName string, v reflect.Value, cfg *Config) error {
-	if v.Type().Kind() != reflect.Struct {
-
-	}
-
-	t := v.Type().Elem()
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
-		tagValue := field.Tag.Get(cfg.TagName)
-		if tagValue == "" {
-			continue
-		}
-		fieldValue := v.Elem().Field(i)
-
-		path := path(deepName, field.Name)
-		if !isDefault(fieldValue) {
-			continue
-		}
-
-		var (
-			set bool
-			err error
-		)
-		for _, setter := range cfg.Setters {
-			set, err = setter(path, fieldValue, tagValue)
-			if err != nil {
-				return fmt.Errorf("cannot set default value for %s, err: %w", field.Name, err)
+func fillStruct(deepName string, value reflect.Value, tagValue string, cfg *Config) error {
+	if value.Type().Elem().Kind() == reflect.Struct {
+		t := value.Type().Elem()
+		for i := 0; i < t.NumField(); i++ {
+			field := t.Field(i)
+			tagValue := field.Tag.Get(cfg.TagName)
+			if tagValue == "" {
+				continue
 			}
-			if set {
-				break
+			fieldValue := value.Elem().Field(i)
+
+			path := path(deepName, field.Name)
+			if !isDefault(fieldValue) {
+				continue
 			}
+
+			if err := fillSome(path, fieldValue, tagValue, cfg); err != nil {
+				return err
+			}
+		}
+	} else {
+		// not a pointer to a struct, fill the value by setters or set directly
+		// e.g. *int, *string
+		value = value.Elem()
+		if !isDefault(value) {
+			return nil
+		}
+		set, err := applySetters(deepName, value, tagValue, cfg.Setters)
+		if err != nil {
+			return err
 		}
 		if set {
-			continue
+			return nil
 		}
+		return setDefault(deepName, value, tagValue)
+	}
+	return nil
+}
 
-		if field.Type.Kind() == reflect.Pointer {
-			if fieldValue.IsNil() {
-				fieldValue.Set(reflect.New(field.Type.Elem())) // create a new instance
-			}
-			if err := fillStruct(path, fieldValue, cfg); err != nil {
-				return err
-			}
-		} else if field.Type.Kind() == reflect.Struct {
-			if err := fillStruct(path, fieldValue.Addr(), cfg); err != nil {
-				return err
-			}
-		} else {
-			if err := setDefault(path, fieldValue, tagValue); err != nil {
-				return err
-			}
+func fillSome(path string, fieldValue reflect.Value, tagValue string, cfg *Config) error {
+	set, err := applySetters(path, fieldValue, tagValue, cfg.Setters)
+	if err != nil {
+		return err
+	}
+	if set {
+		return nil
+	}
+
+	if fieldValue.Type().Kind() == reflect.Pointer {
+		if fieldValue.IsNil() {
+			fieldValue.Set(reflect.New(fieldValue.Type().Elem())) // create a new instance
+		}
+		if err := fillStruct(path, fieldValue, tagValue, cfg); err != nil {
+			return err
+		}
+	} else if fieldValue.Type().Kind() == reflect.Struct {
+		if err := fillStruct(path, fieldValue.Addr(), tagValue, cfg); err != nil {
+			return err
+		}
+	} else {
+		if err := setDefault(path, fieldValue, tagValue); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -281,9 +292,22 @@ func setDefault(path string, fieldValue reflect.Value, value string) error {
 		}
 		fieldValue.SetBool(b)
 	default:
-		return fmt.Errorf("unhandled default value for %s, type %s", path, fieldValue.Type().String())
+		return fmt.Errorf("cannot set default value for %s, no suitable default setter for %s", path, fieldValue.Type().String())
 	}
 	return nil
+}
+
+func applySetters(path string, fieldValue reflect.Value, value string, setters []DefaultSetter) (set bool, err error) {
+	for _, setter := range setters {
+		set, err = setter(path, fieldValue, value)
+		if err != nil {
+			return set, err
+		}
+		if set {
+			return set, err
+		}
+	}
+	return false, nil
 }
 
 func path(deepName, name string) string {

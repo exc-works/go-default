@@ -118,6 +118,34 @@ func TestStruct_Int(t *testing.T) {
 		require.NoError(t, err)
 		require.EqualValues(t, 2, foo.Int)
 	})
+	t.Run("should return error when failed to parse int", func(t *testing.T) {
+		var foo struct {
+			Int int `default:"not int"`
+		}
+		err := Struct(&foo)
+		require.ErrorContains(t, err, "cannot set default value for Int, parse not int to int failed")
+	})
+}
+
+func TestStruct_IntPtr(t *testing.T) {
+	t.Run("set", func(t *testing.T) {
+		var foo struct {
+			ValuePtr *int `default:"1"`
+		}
+		err := Struct(&foo)
+		require.NoError(t, err)
+		require.EqualValues(t, 1, *foo.ValuePtr)
+	})
+	t.Run("not set", func(t *testing.T) {
+		var foo struct {
+			ValuePtr *int `default:"1"`
+		}
+		var i = 10
+		foo.ValuePtr = &i
+		err := Struct(&foo)
+		require.NoError(t, err)
+		require.EqualValues(t, 10, *foo.ValuePtr)
+	})
 }
 
 func TestStruct_Uint(t *testing.T) {
@@ -134,6 +162,27 @@ func TestStruct_Uint(t *testing.T) {
 		err := Struct(foo)
 		require.NoError(t, err)
 		require.EqualValues(t, 456, foo.Uint)
+	})
+}
+
+func TestStruct_UintPtr(t *testing.T) {
+	t.Run("set", func(t *testing.T) {
+		var foo struct {
+			ValuePtr *uint `default:"1"`
+		}
+		err := Struct(&foo)
+		require.NoError(t, err)
+		require.EqualValues(t, 1, *foo.ValuePtr)
+	})
+	t.Run("not set", func(t *testing.T) {
+		var foo struct {
+			ValuePtr *uint `default:"1"`
+		}
+		var i uint = 10
+		foo.ValuePtr = &i
+		err := Struct(&foo)
+		require.NoError(t, err)
+		require.EqualValues(t, 10, *foo.ValuePtr)
 	})
 }
 
@@ -168,6 +217,27 @@ func TestStruct_Float64(t *testing.T) {
 		err := Struct(foo)
 		require.NoError(t, err)
 		require.EqualValues(t, 4.0, foo.Float64)
+	})
+}
+
+func TestStruct_Float64Ptr(t *testing.T) {
+	t.Run("set", func(t *testing.T) {
+		var foo struct {
+			ValuePtr *float64 `default:"1.432"`
+		}
+		err := Struct(&foo)
+		require.NoError(t, err)
+		require.EqualValues(t, 1.432, *foo.ValuePtr)
+	})
+	t.Run("not set", func(t *testing.T) {
+		var foo struct {
+			ValuePtr *float64 `default:"1"`
+		}
+		var i = 1.234
+		foo.ValuePtr = &i
+		err := Struct(&foo)
+		require.NoError(t, err)
+		require.EqualValues(t, 1.234, *foo.ValuePtr)
 	})
 }
 
@@ -208,6 +278,27 @@ func TestStruct_Duration(t *testing.T) {
 	})
 }
 
+func TestStruct_DurationPtr(t *testing.T) {
+	t.Run("set", func(t *testing.T) {
+		var foo struct {
+			ValuePtr *time.Duration `default:"1s"`
+		}
+		err := Struct(&foo)
+		require.NoError(t, err)
+		require.EqualValues(t, time.Second, *foo.ValuePtr)
+	})
+	t.Run("not set", func(t *testing.T) {
+		var foo struct {
+			ValuePtr *time.Duration `default:"1"`
+		}
+		var i = time.Hour
+		foo.ValuePtr = &i
+		err := Struct(&foo)
+		require.NoError(t, err)
+		require.EqualValues(t, time.Hour, *foo.ValuePtr)
+	})
+}
+
 func TestStruct_Time(t *testing.T) {
 	t.Run("set", func(t *testing.T) {
 		foo := &Foo{}
@@ -222,6 +313,27 @@ func TestStruct_Time(t *testing.T) {
 		err := Struct(foo)
 		require.NoError(t, err)
 		require.NotEqualValues(t, time.Date(2025, 1, 10, 17, 20, 0, 0, time.UTC), foo.Time)
+	})
+}
+
+func TestStruct_TimePtr(t *testing.T) {
+	t.Run("set", func(t *testing.T) {
+		var foo struct {
+			ValuePtr *time.Time `default:"2025-01-10T17:20:00Z"`
+		}
+		err := Struct(&foo)
+		require.NoError(t, err)
+		require.EqualValues(t, time.Date(2025, 1, 10, 17, 20, 0, 0, time.UTC), *foo.ValuePtr)
+	})
+	t.Run("not set", func(t *testing.T) {
+		var foo struct {
+			ValuePtr *time.Time `default:"2025-01-10T17:20:00Z"`
+		}
+		var i = time.Now()
+		foo.ValuePtr = &i
+		err := Struct(&foo)
+		require.NoError(t, err)
+		require.EqualValues(t, i, *foo.ValuePtr)
 	})
 }
 
@@ -393,4 +505,12 @@ func TestStruct_AnonymousPtr(t *testing.T) {
 		require.NoError(t, err)
 		require.EqualValues(t, "multiverse", foo.AnonymousPtr.String)
 	})
+}
+
+func TestStruct_UnsupportedType(t *testing.T) {
+	var foo struct {
+		Unsupported chan int `default:"1"`
+	}
+	err := Struct(&foo)
+	require.ErrorContains(t, err, "cannot set default value for Unsupported, no suitable default setter for chan int")
 }

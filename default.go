@@ -20,19 +20,18 @@ var (
 // DefaultSetter set the default value for a field
 //
 //   - path is the full path of the field, like "foo.bar.baz"
-//   - field is the reflect.StructField of the field
 //   - fieldValue is the reflect.Value of the field
 //   - value is the default value from the tag
-type DefaultSetter func(path string, field reflect.StructField, fieldValue reflect.Value, value string) (set bool, err error)
+type DefaultSetter func(path string, fieldValue reflect.Value, value string) (set bool, err error)
 
 // DurationSetter set the default value for time.Duration
-func DurationSetter(path string, field reflect.StructField, fieldValue reflect.Value, value string) (set bool, err error) {
-	if field.Type != reflect.TypeOf(time.Duration(0)) {
+func DurationSetter(path string, fieldValue reflect.Value, value string) (set bool, err error) {
+	if fieldValue.Type() != reflect.TypeOf(time.Duration(0)) {
 		return false, nil
 	}
 	d, err := time.ParseDuration(value)
 	if err != nil {
-		return false, fmt.Errorf("cannot set default value for %s, parse %s to %s failed", path, value, field.Type.String())
+		return false, fmt.Errorf("cannot set default value for %s, parse %s to %s failed", path, value, fieldValue.Type().String())
 	}
 	fieldValue.Set(reflect.ValueOf(d))
 	return true, nil
@@ -42,8 +41,8 @@ func DurationSetter(path string, field reflect.StructField, fieldValue reflect.V
 //
 // The default layout is time.RFC3339, you can specify a custom layout by separating the value with a semicolon.
 // For example, "Fri, 10 Jan 2025 17:20:00 UTC;Mon, 02 Jan 2006 15:04:05 MST"
-func TimeSetter(path string, field reflect.StructField, fieldValue reflect.Value, value string) (set bool, err error) {
-	if field.Type != reflect.TypeOf(time.Time{}) {
+func TimeSetter(path string, fieldValue reflect.Value, value string) (set bool, err error) {
+	if fieldValue.Type() != reflect.TypeOf(time.Time{}) {
 		return false, nil
 	}
 	if !fieldValue.Interface().(time.Time).IsZero() {
@@ -55,15 +54,15 @@ func TimeSetter(path string, field reflect.StructField, fieldValue reflect.Value
 	}
 	t, err := time.Parse(values[1], values[0])
 	if err != nil {
-		return false, fmt.Errorf("cannot set default value for %s, parse %s to %s failed", path, value, field.Type.String())
+		return false, fmt.Errorf("cannot set default value for %s, parse %s to %s failed", path, value, fieldValue.Type().String())
 	}
 	fieldValue.Set(reflect.ValueOf(t))
 	return true, nil
 }
 
 // URLSetter set the default value for *url.URL
-func URLSetter(path string, field reflect.StructField, fieldValue reflect.Value, value string) (set bool, err error) {
-	if field.Type != reflect.TypeOf(&url.URL{}) {
+func URLSetter(path string, fieldValue reflect.Value, value string) (set bool, err error) {
+	if fieldValue.Type() != reflect.TypeOf(&url.URL{}) {
 		return false, nil
 	}
 	if !fieldValue.IsNil() {
@@ -71,7 +70,7 @@ func URLSetter(path string, field reflect.StructField, fieldValue reflect.Value,
 	}
 	u, err := url.Parse(value)
 	if err != nil {
-		return false, fmt.Errorf("cannot set default value for %s, parse %s to %s failed", path, value, field.Type.String())
+		return false, fmt.Errorf("cannot set default value for %s, parse %s to %s failed", path, value, fieldValue.Type().String())
 	}
 	fieldValue.Set(reflect.ValueOf(u))
 	return true, nil
@@ -80,8 +79,8 @@ func URLSetter(path string, field reflect.StructField, fieldValue reflect.Value,
 // ByteSliceSetter set the default value for []byte
 //
 // The value can be a hex string or base64 string, like "0x1234" or "SGVsbG8="
-func ByteSliceSetter(path string, field reflect.StructField, fieldValue reflect.Value, value string) (set bool, err error) {
-	if field.Type != reflect.TypeOf([]byte{}) {
+func ByteSliceSetter(path string, fieldValue reflect.Value, value string) (set bool, err error) {
+	if fieldValue.Type() != reflect.TypeOf([]byte{}) {
 		return false, nil
 	}
 	if fieldValue.Len() > 0 {
@@ -93,13 +92,13 @@ func ByteSliceSetter(path string, field reflect.StructField, fieldValue reflect.
 	if strings.HasPrefix(value, "0x") {
 		b, err := hex.DecodeString(value[2:])
 		if err != nil {
-			return false, fmt.Errorf("cannot set default value for %s, decode %s to %s failed", path, value, field.Type.String())
+			return false, fmt.Errorf("cannot set default value for %s, decode %s to %s failed", path, value, fieldValue.Type().String())
 		}
 		fieldValue.Set(reflect.ValueOf(b))
 	} else {
 		b, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return false, fmt.Errorf("cannot set default value for %s, decode %s to %s failed", path, value, field.Type.String())
+			return false, fmt.Errorf("cannot set default value for %s, decode %s to %s failed", path, value, fieldValue.Type().String())
 		}
 		fieldValue.Set(reflect.ValueOf(b))
 	}
@@ -109,14 +108,14 @@ func ByteSliceSetter(path string, field reflect.StructField, fieldValue reflect.
 // TextUnmarshalerSetter set the default value for encoding.TextUnmarshaler
 //
 // The field must be a pointer to a type that implements encoding.TextUnmarshaler
-func TextUnmarshalerSetter(path string, field reflect.StructField, fieldValue reflect.Value, value string) (set bool, err error) {
-	switch field.Type.Kind() {
+func TextUnmarshalerSetter(path string, fieldValue reflect.Value, value string) (set bool, err error) {
+	switch fieldValue.Type().Kind() {
 	case reflect.Pointer:
-		if !field.Type.Implements(reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem()) {
+		if !fieldValue.Type().Implements(reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem()) {
 			return false, nil
 		}
 		if fieldValue.IsNil() {
-			fieldValue.Set(reflect.New(field.Type.Elem()))
+			fieldValue.Set(reflect.New(fieldValue.Type().Elem()))
 		} else {
 			return true, nil // already set
 		}
@@ -167,10 +166,7 @@ func Struct(input any, opts ...Option) error {
 		opt(cfg)
 	}
 
-	return fillStruct("", reflect.ValueOf(input), cfg)
-}
-
-func fillStruct(deepName string, v reflect.Value, cfg *Config) error {
+	v := reflect.ValueOf(input)
 	t := v.Type()
 	if t.Kind() != reflect.Pointer {
 		return ErrNotPointer
@@ -180,6 +176,15 @@ func fillStruct(deepName string, v reflect.Value, cfg *Config) error {
 		return ErrNotPointer
 	}
 
+	return fillStruct("", v, cfg)
+}
+
+func fillStruct(deepName string, v reflect.Value, cfg *Config) error {
+	if v.Type().Kind() != reflect.Struct {
+
+	}
+
+	t := v.Type().Elem()
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
 		tagValue := field.Tag.Get(cfg.TagName)
@@ -189,17 +194,16 @@ func fillStruct(deepName string, v reflect.Value, cfg *Config) error {
 		fieldValue := v.Elem().Field(i)
 
 		path := path(deepName, field.Name)
-		ok, err := isDefault(path, field, fieldValue)
-		if err != nil {
-			return err
-		}
-		if !ok {
+		if !isDefault(fieldValue) {
 			continue
 		}
 
-		var set bool
+		var (
+			set bool
+			err error
+		)
 		for _, setter := range cfg.Setters {
-			set, err = setter(path, field, fieldValue, tagValue)
+			set, err = setter(path, fieldValue, tagValue)
 			if err != nil {
 				return fmt.Errorf("cannot set default value for %s, err: %w", field.Name, err)
 			}
@@ -223,7 +227,7 @@ func fillStruct(deepName string, v reflect.Value, cfg *Config) error {
 				return err
 			}
 		} else {
-			if err := setDefault(path, field, fieldValue, tagValue); err != nil {
+			if err := setDefault(path, fieldValue, tagValue); err != nil {
 				return err
 			}
 		}
@@ -231,53 +235,53 @@ func fillStruct(deepName string, v reflect.Value, cfg *Config) error {
 	return nil
 }
 
-func isDefault(path string, field reflect.StructField, fieldValue reflect.Value) (bool, error) {
-	switch field.Type.Kind() {
+func isDefault(fieldValue reflect.Value) bool {
+	switch fieldValue.Type().Kind() {
 	case reflect.String,
 		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
 		reflect.Float32, reflect.Float64,
 		reflect.Bool:
-		return fieldValue.IsZero(), nil
+		return fieldValue.IsZero()
 	case reflect.Struct, reflect.Pointer:
-		return true, nil
-	case reflect.Slice:
-		return fieldValue.Len() == 0, nil
+		return true
+	case reflect.Slice, reflect.Map:
+		return fieldValue.Len() == 0
 	default:
-		return false, fmt.Errorf("detect unsupported type for %s, type %s", path, field.Type.String())
+		return true
 	}
 }
 
-func setDefault(path string, field reflect.StructField, fieldValue reflect.Value, value string) error {
-	switch field.Type.Kind() {
+func setDefault(path string, fieldValue reflect.Value, value string) error {
+	switch fieldValue.Type().Kind() {
 	case reflect.String:
 		fieldValue.SetString(value)
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		i, err := strconv.ParseInt(value, 10, 64)
 		if err != nil {
-			return fmt.Errorf("cannot set default value for %s, parse %s to %s failed", path, value, field.Type.String())
+			return fmt.Errorf("cannot set default value for %s, parse %s to %s failed", path, value, fieldValue.Type().String())
 		}
 		fieldValue.SetInt(i)
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		i, err := strconv.ParseUint(value, 10, 64)
 		if err != nil {
-			return fmt.Errorf("cannot set default value for %s, parse %s to %s failed", path, value, field.Type.String())
+			return fmt.Errorf("cannot set default value for %s, parse %s to %s failed", path, value, fieldValue.Type().String())
 		}
 		fieldValue.SetUint(i)
 	case reflect.Float32, reflect.Float64:
 		f, err := strconv.ParseFloat(value, 64)
 		if err != nil {
-			return fmt.Errorf("cannot set default value for %s, parse %s to %s failed", path, value, field.Type.String())
+			return fmt.Errorf("cannot set default value for %s, parse %s to %s failed", path, value, fieldValue.Type().String())
 		}
 		fieldValue.SetFloat(f)
 	case reflect.Bool:
 		b, err := strconv.ParseBool(value)
 		if err != nil {
-			return fmt.Errorf("cannot set default value for %s, parse %s to %s failed", path, value, field.Type.String())
+			return fmt.Errorf("cannot set default value for %s, parse %s to %s failed", path, value, fieldValue.Type().String())
 		}
 		fieldValue.SetBool(b)
 	default:
-		return fmt.Errorf("unhandled default value for %s, type %s", path, field.Type.String())
+		return fmt.Errorf("unhandled default value for %s, type %s", path, fieldValue.Type().String())
 	}
 	return nil
 }

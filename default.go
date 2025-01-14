@@ -2,6 +2,8 @@ package go_default
 
 import (
 	"encoding"
+	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/url"
@@ -23,7 +25,7 @@ func DurationSetter(path string, field reflect.StructField, fieldValue reflect.V
 	}
 	d, err := time.ParseDuration(value)
 	if err != nil {
-		return false, fmt.Errorf("cannot set default value for %s, parse %s to %s failed", path, value, field.Type.Name())
+		return false, fmt.Errorf("cannot set default value for %s, parse %s to %s failed", path, value, field.Type.String())
 	}
 	fieldValue.Set(reflect.ValueOf(d))
 	return true, nil
@@ -42,7 +44,7 @@ func TimeSetter(path string, field reflect.StructField, fieldValue reflect.Value
 	}
 	t, err := time.Parse(values[1], values[0])
 	if err != nil {
-		return false, fmt.Errorf("cannot set default value for %s, parse %s to %s failed", path, value, field.Type.Name())
+		return false, fmt.Errorf("cannot set default value for %s, parse %s to %s failed", path, value, field.Type.String())
 	}
 	fieldValue.Set(reflect.ValueOf(t))
 	return true, nil
@@ -54,9 +56,35 @@ func URLSetter(path string, field reflect.StructField, fieldValue reflect.Value,
 	}
 	u, err := url.Parse(value)
 	if err != nil {
-		return false, fmt.Errorf("cannot set default value for %s, parse %s to %s failed", path, value, field.Type.Name())
+		return false, fmt.Errorf("cannot set default value for %s, parse %s to %s failed", path, value, field.Type.String())
 	}
 	fieldValue.Set(reflect.ValueOf(u))
+	return true, nil
+}
+
+func ByteSliceSetter(path string, field reflect.StructField, fieldValue reflect.Value, value string) (set bool, err error) {
+	if field.Type != reflect.TypeOf([]byte{}) {
+		return false, nil
+	}
+	if fieldValue.Len() > 0 {
+		return true, nil // already set
+	}
+	if value == "" {
+		return true, nil
+	}
+	if strings.HasPrefix(value, "0x") {
+		b, err := hex.DecodeString(value[2:])
+		if err != nil {
+			return false, fmt.Errorf("cannot set default value for %s, decode %s to %s failed", path, value, field.Type.String())
+		}
+		fieldValue.Set(reflect.ValueOf(b))
+	} else {
+		b, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return false, fmt.Errorf("cannot set default value for %s, decode %s to %s failed", path, value, field.Type.String())
+		}
+		fieldValue.Set(reflect.ValueOf(b))
+	}
 	return true, nil
 }
 
@@ -89,8 +117,9 @@ func Struct(input any) error {
 		Setters: []DefaultSetter{
 			DurationSetter,
 			TimeSetter,
-			TextUnmarshalerSetter,
 			URLSetter,
+			ByteSliceSetter,
+			TextUnmarshalerSetter,
 		},
 	}
 
@@ -168,8 +197,10 @@ func isDefault(path string, field reflect.StructField, fieldValue reflect.Value)
 		return fieldValue.IsZero(), nil
 	case reflect.Struct, reflect.Pointer:
 		return true, nil
+	case reflect.Slice:
+		return fieldValue.Len() == 0, nil
 	default:
-		return false, fmt.Errorf("detect unsupported type for %s, type %s", path, field.Type.Name())
+		return false, fmt.Errorf("detect unsupported type for %s, type %s", path, field.Type.String())
 	}
 }
 
@@ -180,29 +211,29 @@ func setDefault(path string, field reflect.StructField, fieldValue reflect.Value
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		i, err := strconv.ParseInt(value, 10, 64)
 		if err != nil {
-			return fmt.Errorf("cannot set default value for %s, parse %s to %s failed", path, value, field.Type.Name())
+			return fmt.Errorf("cannot set default value for %s, parse %s to %s failed", path, value, field.Type.String())
 		}
 		fieldValue.SetInt(i)
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		i, err := strconv.ParseUint(value, 10, 64)
 		if err != nil {
-			return fmt.Errorf("cannot set default value for %s, parse %s to %s failed", path, value, field.Type.Name())
+			return fmt.Errorf("cannot set default value for %s, parse %s to %s failed", path, value, field.Type.String())
 		}
 		fieldValue.SetUint(i)
 	case reflect.Float32, reflect.Float64:
 		f, err := strconv.ParseFloat(value, 64)
 		if err != nil {
-			return fmt.Errorf("cannot set default value for %s, parse %s to %s failed", path, value, field.Type.Name())
+			return fmt.Errorf("cannot set default value for %s, parse %s to %s failed", path, value, field.Type.String())
 		}
 		fieldValue.SetFloat(f)
 	case reflect.Bool:
 		b, err := strconv.ParseBool(value)
 		if err != nil {
-			return fmt.Errorf("cannot set default value for %s, parse %s to %s failed", path, value, field.Type.Name())
+			return fmt.Errorf("cannot set default value for %s, parse %s to %s failed", path, value, field.Type.String())
 		}
 		fieldValue.SetBool(b)
 	default:
-		return fmt.Errorf("unhandled default value for %s, type %s", path, field.Type.Name())
+		return fmt.Errorf("unhandled default value for %s, type %s", path, field.Type.String())
 	}
 	return nil
 }

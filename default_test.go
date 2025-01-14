@@ -27,6 +27,8 @@ type Foo struct {
 	Time           time.Time     `default:"2025-01-10T17:20:00Z"`                                        // use time.RFC3339 as default layout
 	TimeWithLayout time.Time     `default:"Fri, 10 Jan 2025 17:20:00 UTC;Mon, 02 Jan 2006 15:04:05 MST"` // use custom layout time.RFC1123
 	URL            *url.URL      `default:"https://example.com"`
+	HexBytes       []byte        `default:"0x1234"`
+	Base64Bytes    []byte        `default:"SGVsbG8="`
 
 	// Type implemented encoding.TextUnmarshaler
 	BigInt    big.Int    `default:"1234567890"` // Not a pointer can not be set
@@ -66,6 +68,8 @@ func TestStruct(t *testing.T) {
 	require.EqualValues(t, time.Date(2025, 1, 10, 17, 20, 0, 0, time.UTC), foo.Time)
 	require.EqualValues(t, time.Date(2025, 1, 10, 17, 20, 0, 0, time.UTC), foo.TimeWithLayout)
 	require.EqualValues(t, "https://example.com", foo.URL.String())
+	require.EqualValues(t, []byte{0x12, 0x34}, foo.HexBytes)
+	require.EqualValues(t, []byte("Hello"), foo.Base64Bytes)
 	require.EqualValues(t, big.NewInt(0).String(), foo.BigInt.String())
 	require.EqualValues(t, "1234567890987654321", foo.BigIntPtr.String())
 	require.EqualValues(t, "1.234", foo.BigFloat.String())

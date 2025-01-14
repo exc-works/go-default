@@ -149,17 +149,21 @@ func WithSetters(setters ...DefaultSetter) Option {
 	}
 }
 
+func DefaultSetters() []DefaultSetter {
+	return []DefaultSetter{
+		DurationSetter,
+		TimeSetter,
+		URLSetter,
+		ByteSliceSetter,
+		TextUnmarshalerSetter,
+	}
+}
+
 // Struct set the default value for a struct
 func Struct(input any, opts ...Option) error {
 	cfg := &Config{
 		TagName: "default",
-		Setters: []DefaultSetter{
-			DurationSetter,
-			TimeSetter,
-			URLSetter,
-			ByteSliceSetter,
-			TextUnmarshalerSetter,
-		},
+		Setters: DefaultSetters(),
 	}
 
 	for _, opt := range opts {

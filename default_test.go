@@ -4,6 +4,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"math/big"
 	"net/url"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -505,6 +506,28 @@ func TestStruct_AnonymousPtr(t *testing.T) {
 		require.NoError(t, err)
 		require.EqualValues(t, "multiverse", foo.AnonymousPtr.String)
 	})
+}
+
+func TestStruct_CustomStringSetter(t *testing.T) {
+	var foo struct {
+		String string `defaults:"hello"`
+	}
+	err := Struct(&foo,
+		WithTagName("defaults"),
+		WithSetters(append(
+			DefaultSetters(),
+			func(path string, fieldValue reflect.Value, value string) (set bool, err error) {
+				if fieldValue.Type().Kind() != reflect.String {
+					return false, nil
+				}
+				fieldValue.SetString(value + " world")
+				return true, nil
+			},
+		)...,
+		),
+	)
+	require.NoError(t, err)
+	require.EqualValues(t, "hello world", foo.String)
 }
 
 func TestStruct_UnsupportedType(t *testing.T) {

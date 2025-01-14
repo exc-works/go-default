@@ -3,6 +3,7 @@ package go_default
 import (
 	"github.com/stretchr/testify/require"
 	"math/big"
+	"net"
 	"net/url"
 	"reflect"
 	"testing"
@@ -28,6 +29,8 @@ type Foo struct {
 	Time           time.Time     `default:"2025-01-10T17:20:00Z"`                                        // use time.RFC3339 as default layout
 	TimeWithLayout time.Time     `default:"Fri, 10 Jan 2025 17:20:00 UTC;Mon, 02 Jan 2006 15:04:05 MST"` // use custom layout time.RFC1123
 	URL            *url.URL      `default:"https://example.com"`
+	IPV4           *net.IPAddr   `default:"156.33.241.5"`
+	IPV6           *net.IPAddr   `default:"2600:1400:a::1743:fa93"`
 	HexBytes       []byte        `default:"0x1234"`
 	Base64Bytes    []byte        `default:"SGVsbG8="`
 
@@ -69,6 +72,8 @@ func TestStruct(t *testing.T) {
 	require.EqualValues(t, time.Date(2025, 1, 10, 17, 20, 0, 0, time.UTC), foo.Time)
 	require.EqualValues(t, time.Date(2025, 1, 10, 17, 20, 0, 0, time.UTC), foo.TimeWithLayout)
 	require.EqualValues(t, "https://example.com", foo.URL.String())
+	require.EqualValues(t, "156.33.241.5", foo.IPV4.String())
+	require.EqualValues(t, "2600:1400:a::1743:fa93", foo.IPV6.String())
 	require.EqualValues(t, []byte{0x12, 0x34}, foo.HexBytes)
 	require.EqualValues(t, []byte("Hello"), foo.Base64Bytes)
 	require.EqualValues(t, big.NewInt(0).String(), foo.BigInt.String())
@@ -369,6 +374,22 @@ func TestStruct_URL(t *testing.T) {
 		err := Struct(foo)
 		require.NoError(t, err)
 		require.EqualValues(t, "https://github.com", foo.URL.String())
+	})
+}
+
+func TestStruct_IPAddr(t *testing.T) {
+	t.Run("set", func(t *testing.T) {
+		foo := &Foo{}
+		err := Struct(foo)
+		require.NoError(t, err)
+		require.EqualValues(t, "2600:1400:a::1743:fa93", foo.IPV6.String())
+	})
+	t.Run("not set", func(t *testing.T) {
+		foo := &Foo{}
+		foo.IPV6 = &net.IPAddr{IP: net.ParseIP("2600:1400:a::1743:fa78")}
+		err := Struct(foo)
+		require.NoError(t, err)
+		require.EqualValues(t, "2600:1400:a::1743:fa78", foo.IPV6.String())
 	})
 }
 

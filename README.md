@@ -22,6 +22,7 @@ package main
 
 import (
 	"fmt"
+	"net"
 	"time"
 	"math/big"
 	"net/url"
@@ -47,6 +48,8 @@ type Foo struct {
 	Time           time.Time     `default:"2025-01-10T17:20:00Z"`                                        // use time.RFC3339 as default layout
 	TimeWithLayout time.Time     `default:"Fri, 10 Jan 2025 17:20:00 UTC;Mon, 02 Jan 2006 15:04:05 MST"` // use custom layout time.RFC1123
 	URL            *url.URL      `default:"https://example.com"`
+	IPV4           *net.IPAddr   `default:"156.33.241.5"`
+	IPV6           *net.IPAddr   `default:"2600:1400:a::1743:fa93"`
 	HexBytes       []byte        `default:"0x1234"`
 	Base64Bytes    []byte        `default:"SGVsbG8="`
 
@@ -98,6 +101,7 @@ The following types are supported out of the box:
 > For example, `default:"Fri, 10 Jan 2025 17:20:00 UTC;Mon, 02 Jan 2006 15:04:05 MST"`.
 
 - `*url.URL`
+- `*net.IPAddr`
 - `[]byte`
 - any type that implements `encoding.TextUnmarshaler`, e.g. `*big.Int`, `*big.Float`
 

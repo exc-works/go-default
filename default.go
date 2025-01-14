@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"reflect"
 	"strconv"
@@ -73,6 +74,22 @@ func URLSetter(path string, fieldValue reflect.Value, value string) (set bool, e
 		return false, fmt.Errorf("cannot set default value for %s, parse %s to %s failed", path, value, fieldValue.Type().String())
 	}
 	fieldValue.Set(reflect.ValueOf(u))
+	return true, nil
+}
+
+// IPAddrSetter set the default value for *net.IPAddr
+func IPAddrSetter(path string, fieldValue reflect.Value, value string) (set bool, err error) {
+	if fieldValue.Type() != reflect.TypeOf(&net.IPAddr{}) {
+		return false, nil
+	}
+	if !fieldValue.IsNil() {
+		return true, nil // already set
+	}
+	ipAddr, err := net.ResolveIPAddr("", value)
+	if err != nil {
+		return false, fmt.Errorf("cannot set default value for %s, parse %s to %s failed", path, value, fieldValue.Type().String())
+	}
+	fieldValue.Set(reflect.ValueOf(ipAddr))
 	return true, nil
 }
 
@@ -154,6 +171,7 @@ func DefaultSetters() []DefaultSetter {
 		DurationSetter,
 		TimeSetter,
 		URLSetter,
+		IPAddrSetter,
 		ByteSliceSetter,
 		TextUnmarshalerSetter,
 	}

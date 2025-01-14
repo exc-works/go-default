@@ -4,6 +4,7 @@ import (
 	"encoding"
 	"errors"
 	"fmt"
+	"net/url"
 	"reflect"
 	"strconv"
 	"strings"
@@ -14,23 +15,26 @@ var (
 	ErrNotPointer = errors.New("input must be a pointer to a struct")
 )
 
-type DefaultSetter func(field reflect.StructField, fieldValue reflect.Value, value string) (set bool, err error)
+type DefaultSetter func(path string, field reflect.StructField, fieldValue reflect.Value, value string) (set bool, err error)
 
-func DurationSetter(field reflect.StructField, fieldValue reflect.Value, value string) (set bool, err error) {
+func DurationSetter(path string, field reflect.StructField, fieldValue reflect.Value, value string) (set bool, err error) {
 	if field.Type != reflect.TypeOf(time.Duration(0)) {
 		return false, nil
 	}
 	d, err := time.ParseDuration(value)
 	if err != nil {
-		return false, fmt.Errorf("cannot set default value for %s, parse %s to %s failed", field.Name, value, field.Type.Name())
+		return false, fmt.Errorf("cannot set default value for %s, parse %s to %s failed", path, value, field.Type.Name())
 	}
 	fieldValue.Set(reflect.ValueOf(d))
 	return true, nil
 }
 
-func TimeSetter(field reflect.StructField, fieldValue reflect.Value, value string) (set bool, err error) {
+func TimeSetter(path string, field reflect.StructField, fieldValue reflect.Value, value string) (set bool, err error) {
 	if field.Type != reflect.TypeOf(time.Time{}) {
 		return false, nil
+	}
+	if !fieldValue.Interface().(time.Time).IsZero() {
+		return true, nil // already set
 	}
 	values := strings.Split(value, ";")
 	if len(values) == 1 {
@@ -38,13 +42,25 @@ func TimeSetter(field reflect.StructField, fieldValue reflect.Value, value strin
 	}
 	t, err := time.Parse(values[1], values[0])
 	if err != nil {
-		return false, fmt.Errorf("cannot set default value for %s, parse %s to %s failed", field.Name, value, field.Type.Name())
+		return false, fmt.Errorf("cannot set default value for %s, parse %s to %s failed", path, value, field.Type.Name())
 	}
 	fieldValue.Set(reflect.ValueOf(t))
 	return true, nil
 }
 
-func TextUnmarshalerSetter(field reflect.StructField, fieldValue reflect.Value, value string) (set bool, err error) {
+func URLSetter(path string, field reflect.StructField, fieldValue reflect.Value, value string) (set bool, err error) {
+	if field.Type != reflect.TypeOf(&url.URL{}) {
+		return false, nil
+	}
+	u, err := url.Parse(value)
+	if err != nil {
+		return false, fmt.Errorf("cannot set default value for %s, parse %s to %s failed", path, value, field.Type.Name())
+	}
+	fieldValue.Set(reflect.ValueOf(u))
+	return true, nil
+}
+
+func TextUnmarshalerSetter(path string, field reflect.StructField, fieldValue reflect.Value, value string) (set bool, err error) {
 	switch field.Type.Kind() {
 	case reflect.Pointer:
 		if !field.Type.Implements(reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem()) {
@@ -54,7 +70,7 @@ func TextUnmarshalerSetter(field reflect.StructField, fieldValue reflect.Value, 
 			fieldValue.Set(reflect.New(field.Type.Elem()))
 		}
 		if err := fieldValue.Interface().(encoding.TextUnmarshaler).UnmarshalText([]byte(value)); err != nil {
-			return false, fmt.Errorf("cannot set default value for %s, unmarshal %s failed", field.Name, value)
+			return false, fmt.Errorf("cannot set default value for %s, unmarshal %s failed", path, value)
 		}
 		return true, nil
 	default:
@@ -74,6 +90,7 @@ func Struct(input any) error {
 			DurationSetter,
 			TimeSetter,
 			TextUnmarshalerSetter,
+			URLSetter,
 		},
 	}
 
@@ -109,7 +126,7 @@ func fillStruct(deepName string, v reflect.Value, cfg *Config) error {
 
 		var set bool
 		for _, setter := range cfg.Setters {
-			set, err = setter(field, fieldValue, tagValue)
+			set, err = setter(path, field, fieldValue, tagValue)
 			if err != nil {
 				return fmt.Errorf("cannot set default value for %s, err: %w", field.Name, err)
 			}

@@ -17,8 +17,15 @@ var (
 	ErrNotPointer = errors.New("input must be a pointer to a struct")
 )
 
+// DefaultSetter set the default value for a field
+//
+//   - path is the full path of the field, like "foo.bar.baz"
+//   - field is the reflect.StructField of the field
+//   - fieldValue is the reflect.Value of the field
+//   - value is the default value from the tag
 type DefaultSetter func(path string, field reflect.StructField, fieldValue reflect.Value, value string) (set bool, err error)
 
+// DurationSetter set the default value for time.Duration
 func DurationSetter(path string, field reflect.StructField, fieldValue reflect.Value, value string) (set bool, err error) {
 	if field.Type != reflect.TypeOf(time.Duration(0)) {
 		return false, nil
@@ -31,6 +38,10 @@ func DurationSetter(path string, field reflect.StructField, fieldValue reflect.V
 	return true, nil
 }
 
+// TimeSetter set the default value for time.Time
+//
+// The default layout is time.RFC3339, you can specify a custom layout by separating the value with a semicolon.
+// For example, "Fri, 10 Jan 2025 17:20:00 UTC;Mon, 02 Jan 2006 15:04:05 MST"
 func TimeSetter(path string, field reflect.StructField, fieldValue reflect.Value, value string) (set bool, err error) {
 	if field.Type != reflect.TypeOf(time.Time{}) {
 		return false, nil
@@ -50,6 +61,7 @@ func TimeSetter(path string, field reflect.StructField, fieldValue reflect.Value
 	return true, nil
 }
 
+// URLSetter set the default value for *url.URL
 func URLSetter(path string, field reflect.StructField, fieldValue reflect.Value, value string) (set bool, err error) {
 	if field.Type != reflect.TypeOf(&url.URL{}) {
 		return false, nil
@@ -62,6 +74,9 @@ func URLSetter(path string, field reflect.StructField, fieldValue reflect.Value,
 	return true, nil
 }
 
+// ByteSliceSetter set the default value for []byte
+//
+// The value can be a hex string or base64 string, like "0x1234" or "SGVsbG8="
 func ByteSliceSetter(path string, field reflect.StructField, fieldValue reflect.Value, value string) (set bool, err error) {
 	if field.Type != reflect.TypeOf([]byte{}) {
 		return false, nil
@@ -88,6 +103,9 @@ func ByteSliceSetter(path string, field reflect.StructField, fieldValue reflect.
 	return true, nil
 }
 
+// TextUnmarshalerSetter set the default value for encoding.TextUnmarshaler
+//
+// The field must be a pointer to a type that implements encoding.TextUnmarshaler
 func TextUnmarshalerSetter(path string, field reflect.StructField, fieldValue reflect.Value, value string) (set bool, err error) {
 	switch field.Type.Kind() {
 	case reflect.Pointer:
@@ -107,11 +125,28 @@ func TextUnmarshalerSetter(path string, field reflect.StructField, fieldValue re
 }
 
 type Config struct {
-	TagName string
-	Setters []DefaultSetter
+	TagName string          // default tag name
+	Setters []DefaultSetter // default setters to convert string to specific type
 }
 
-func Struct(input any) error {
+type Option func(cfg *Config)
+
+// WithTagName set the tag name to search for default value
+func WithTagName(tagName string) Option {
+	return func(cfg *Config) {
+		cfg.TagName = tagName
+	}
+}
+
+// WithSetters set the default setters to convert string to specific type
+func WithSetters(setters ...DefaultSetter) Option {
+	return func(cfg *Config) {
+		cfg.Setters = setters
+	}
+}
+
+// Struct set the default value for a struct
+func Struct(input any, opts ...Option) error {
 	cfg := &Config{
 		TagName: "default",
 		Setters: []DefaultSetter{
@@ -121,6 +156,10 @@ func Struct(input any) error {
 			ByteSliceSetter,
 			TextUnmarshalerSetter,
 		},
+	}
+
+	for _, opt := range opts {
+		opt(cfg)
 	}
 
 	return fillStruct("", reflect.ValueOf(input), cfg)
